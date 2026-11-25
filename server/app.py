@@ -33,6 +33,7 @@ import json
 import os
 import secrets
 import socket
+import sys
 import time
 from pathlib import Path
 
@@ -46,7 +47,20 @@ try:
 except ImportError:
     requests = None
 
-CONFIG_PATH = Path(__file__).parent / "config.json"
+# When packaged as an .exe, keep config next to the .exe (not in PyInstaller's temp dir)
+FROZEN = getattr(sys, "frozen", False)
+BASE_DIR = Path(sys.executable).parent if FROZEN else Path(__file__).parent
+CONFIG_PATH = BASE_DIR / "config.json"
+
+
+def pause_if_exe():
+    """Keep the console window open in the .exe so messages can be read."""
+    if FROZEN:
+        try:
+            input("\nPress Enter to close...")
+        except Exception:
+            pass
+
 app = Flask(__name__)
 
 # ---------------------------------------------------------------------------
@@ -68,7 +82,8 @@ DEFAULT_CONFIG = {
 def load_config():
     if not CONFIG_PATH.exists():
         CONFIG_PATH.write_text(json.dumps(DEFAULT_CONFIG, indent=2))
-        print(f"Created {CONFIG_PATH} - fill it in, then re-run this script.")
+        print(f"Created {CONFIG_PATH} - fill it in, then re-run this program.")
+        pause_if_exe()
         raise SystemExit(0)
     cfg = json.loads(CONFIG_PATH.read_text())
     changed = False
@@ -110,7 +125,7 @@ def get_spotify():
             redirect_uri=CONFIG["spotify_redirect_uri"],
             scope="user-read-playback-state user-modify-playback-state user-read-currently-playing",
             open_browser=True,
-            cache_path=str(Path(__file__).parent / ".spotify_cache"),
+            cache_path=str(BASE_DIR / ".spotify_cache"),
         )
         _sp_client = spotipy.Spotify(auth_manager=auth)
     return _sp_client
@@ -266,4 +281,9 @@ if __name__ == "__main__":
     print(f"  Port:                          {CONFIG['port']}")
     print(f"  Auth token (enter in app):     {CONFIG['auth_token']}")
     print("=" * 60)
-    app.run(host="0.0.0.0", port=CONFIG["port"])
+    try:
+        app.run(host="0.0.0.0", port=CONFIG["port"])
+    except Exception as e:
+        print(f"Server stopped: {e}")
+        pause_if_exe()
+
